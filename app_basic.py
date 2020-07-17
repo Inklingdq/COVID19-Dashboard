@@ -168,11 +168,16 @@ def update_graph(selected_dropdown_value):
     #sys.path.append("/home/ubuntu/new_uploader")
     sys.path.append("/usr/local/google/home/danqingwang/covid19-severity-prediction/viz")
     import viz_map_utils
-    dates = viz_map_utils.date_in_data(df)
+    date1 = viz_map_utils.date_in_data(df)
+    date2 = [i for i in range(len(date1))]
     for i in range(4):
         key = keys[i]
         for index, pos in enumerate(selected_dropdown_value):
             row = df[df['pos'] == pos]
+            if i < 2:
+              dates = date1
+            else:
+              dates = date2
             fig.add_trace(go.Scatter(x=dates,
                         y=row[key].to_list()[0],
                         line=dict(color=cols[index]),
@@ -181,8 +186,19 @@ def update_graph(selected_dropdown_value):
                         ),row = i //2 + 1, col = i - (i// 2)*2 + 1) 
     fig.update_layout(height=1000,                         
                       template='plotly_dark',
+                      xaxis_title="Time",
+                      yaxis_title="Count",
                       yaxis_showgrid=True)
-                                    
+
+    # edit axis labels
+    fig['layout']['xaxis']['title']='Date'
+    fig['layout']['xaxis2']['title']='Date'
+    fig['layout']['xaxis3']['title']='Days'
+    fig['layout']['xaxis4']['title']='Days'
+    fig['layout']['yaxis']['title']='Cases'
+    fig['layout']['yaxis2']['title']='Deaths'
+    fig['layout']['yaxis3']['title']='Cases'
+    fig['layout']['yaxis4']['title']='Deaths'                                
     return fig
 
 
