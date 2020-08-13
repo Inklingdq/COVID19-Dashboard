@@ -1,6 +1,7 @@
 import dash
 import dash_html_components as html
 import dash_core_components as dcc
+import dash_daq as daq
 import pandas as pd
 from dash.dependencies import Input, Output
 from plotly.subplots import make_subplots
@@ -11,9 +12,11 @@ from datetime import datetime, timedelta
 import os
 from os.path import join as oj
 
+import nn
+
 ## find the closet pkl file to load
 def load_data():
-    cached_dir = ""
+    cached_dir = "/home/ubuntu/new_uploader/data"
     for i in range(10):
         d = (datetime.today() - timedelta(days=i)).date()
         cached_fname = oj(cached_dir, f'preds_{d.month}_{d.day}_cached.pkl')
@@ -119,6 +122,13 @@ def get_options(list_counties):
 
     return dict_list
 
+def get_feats():
+    dict_list = []
+    feats = {"# ICU Beds": "#ICU_beds", "Recent Daily Deaths": "#Deaths_07-03-2020", "Median Age": "MedianAge2010", "Total Deaths": "tot_deaths"}
+    for k, v in feats.items():
+        dict_list.append({'label': k, 'value': v})
+
+    return dict_list
 
 app.layout = html.Div(
     children=[
@@ -126,26 +136,25 @@ app.layout = html.Div(
                  children=[
                     html.Div(className='four columns div-user-controls',
                              children=[
-                                 html.H1('COVID19 County Visualization'),
-                                 html.P('Visualising time series of mutilple counties'),
-                                 html.P('Pick one or more counties from the dropdown below.'),
-                                 html.Div(
-                                     className='div-for-dropdown',
-                                     children=[
-                                         dcc.Dropdown(id='countyselector', options=get_options(df['pos'].unique()),
-                                                      multi=True, value=[df['pos'][0]],
-                                                      style={'backgroundColor': '#1E1E1E'},
-                                                      className='countyselector'
-                                                      ),
-                                     ],
-                                     )
+                                 html.H1('COVID19 County Nearest Neighbors & Visualization'),
+                                 html.P('Visualizing time series of multiple counties.', style={'font-style': 'italic'}),
+                                 html.Br(),
+                                 html.P('Nearest Neighbors or Manual Selection', style={'text-align': 'center'}),
+                                 html.Div(daq.ToggleSwitch(id='my-toggle-switch',
+                                                           size=60, color='red',
+                                                           value=False)),
+                                 html.Br(),
+                                 html.Div(id='toggle-switch-output'),
+                                 html.Br(),
+                                 html.P('Use the toggle button above to switch between dashboards: nearest neighbors or manually choosing counties to visualize.', style={'font-style': 'italic', 'text-align': 'center'}),
                                 ]
                              ),
                     html.Div(className='eight columns div-for-charts bg-grey',
                              children=[
-                                 dcc.Graph(id='timeseries', config={'displayModeBar': False}, animate=True)
+                                 dcc.Graph(id='timeseries', config={'displayModeBar': True})
                              ])
-                              ],style = {'display': 'inline-block', 'width': '100%','height':'200%'})
+                              ],style = {'display': 'inline-block', 'width': '100%','height':'200%'}),
+                                
         ]
 
 )
@@ -153,8 +162,11 @@ app.layout = html.Div(
 
 # Callback for timeseries price
 @app.callback(Output('timeseries', 'figure'),
-              [Input('countyselector', 'value')])
-def update_graph(selected_dropdown_value):
+              [Input('countyselector', 'value'), Input('nnfeatselector', 'value')])
+def update_graph(selected_counties, selected_features):
+    print(selected_counties)
+    print(selected_features)
+    print(isinstance(selected_counties, list))
     cols = ['#e6194b', '#3cb44b', '#ffe119', '#4363d8', 
         '#f58231', '#911eb4', '#46f0f0', '#f032e6', 
         '#bcf60c', '#fabebe', '#008080', '#e6beff', 
@@ -165,25 +177,66 @@ def update_graph(selected_dropdown_value):
                         subplot_titles=("Cases", "Deaths", "Cases (Aligned to first case)", "Deaths (Aligned to first death)"))
     keys = ['cases', 'deaths', 'aligned_cases', 'aligned_deaths']
     import sys
-    #sys.path.append("/home/ubuntu/new_uploader")
-    sys.path.append("/usr/local/google/home/danqingwang/covid19-severity-prediction/viz")
+    sys.path.append("/home/ubuntu/new_uploader/viz")
+    #sys.path.append("/usr/local/google/home/danqingwang/covid19-severity-prediction/viz")
     import viz_map_utils
     date1 = viz_map_utils.date_in_data(df)
+#     print(date1)
     date2 = [i for i in range(len(date1))]
-    for i in range(4):
-        key = keys[i]
-        for index, pos in enumerate(selected_dropdown_value):
-            row = df[df['pos'] == pos]
+    
+    # if multiple counties are selected, aka manual select
+    if isinstance(selected_counties, list):
+        for i in range(4):
+            key = keys[i]
+            for index, pos in enumerate(selected_counties):
+                row = df[df['pos'] == pos]
+                if i < 2:
+                    dates = date1
+                else:
+                    dates = date2
+                fig.add_trace(go.Scatter(x=dates,
+                            y=row[key].to_list()[0],
+                            line=dict(color=cols[index]),
+                            name = row['CountyName'].values[0] +', ' + row['StateName'].values[0],
+                            showlegend = i == 0
+                            ),row = i //2 + 1, col = i - (i// 2)*2 + 1) 
+    # if a single county is selected, aka nearest neighbors
+    elif selected_counties is not None:
+        # plot selected county
+        for i in range(4):
+            key = keys[i]
+            row = df[df['pos'] == selected_counties]
             if i < 2:
-              dates = date1
+                dates = date1
             else:
-              dates = date2
+                dates = date2
             fig.add_trace(go.Scatter(x=dates,
                         y=row[key].to_list()[0],
-                        line=dict(color=cols[index]),
+                        line=dict(color=cols[0]),
                         name = row['CountyName'].values[0] +', ' + row['StateName'].values[0],
                         showlegend = i == 0
-                        ),row = i //2 + 1, col = i - (i// 2)*2 + 1) 
+                        ),row = i //2 + 1, col = i - (i// 2)*2 + 1)
+        # if features are selected, run nearest neighbors and plot results    
+        if selected_features is not None:
+            if len(selected_features)!= 0:
+                neighs = nn.model(df, selected_features, selected_counties)
+                print(neighs)
+                for i in range(4):
+                    key = keys[i]
+                    for index, pos in enumerate(neighs):
+                        row = df[df['pos'] == pos]
+                        if i < 2:
+                            dates = date1
+                        else:
+                            dates = date2
+                        print(row['CountyName'].values[0] +', ' + row['StateName'].values[0])
+                        fig.add_trace(go.Scatter(x=dates,
+                                    y=row[key].to_list()[0],
+                                    line=dict(color=cols[index+1]),
+                                    name = row['CountyName'].values[0] +', ' + row['StateName'].values[0],
+                                    showlegend = i == 0
+                                    ),row = i //2 + 1, col = i - (i// 2)*2 + 1)
+                
     fig.update_layout(height=1000,                         
                       template='plotly_dark',
                       xaxis_title="Time",
@@ -202,5 +255,46 @@ def update_graph(selected_dropdown_value):
     return fig
 
 
+@app.callback(
+    dash.dependencies.Output('toggle-switch-output', 'children'),
+    [dash.dependencies.Input('my-toggle-switch', 'value')])
+def update_output(value):
+    switch_bool = 'The switch is {}. '.format(value)
+    if value == True:
+        return html.Div(className='div-for-dropdown',
+                        children=[
+                            html.P('Pick one or more counties from the dropdown below.'),
+                            dcc.Dropdown(id='countyselector', options=get_options(df['pos'].unique()),
+                                         multi=True, value=[df['pos'][0]],
+                                         style={'backgroundColor': '#1E1E1E'},
+                                         className='countyselector'
+                                        ),
+                            dcc.Dropdown(id='nnfeatselector', options=get_feats(),
+                                         multi=True,
+                                         style={'display': 'none'},
+                                         className='nnfeatselector'
+                                        )
+                                 ],
+                        )
+    else:
+        return html.Div(className='div-for-dropdown',
+                        children=[
+                            html.P('Pick a county from the dropdown below.'),
+                            dcc.Dropdown(id='countyselector', options=get_options(df['pos'].unique()),
+                                         multi=False, value=df['pos'][0],
+                                         style={'backgroundColor': '#1E1E1E'},
+                                         className='countyselector'
+                                        ),
+                            html.Br(),
+                            html.P('Pick one or more features from the dropdown below.'),
+                            dcc.Dropdown(id='nnfeatselector', options=get_feats(),
+                                         multi=True,
+                                         style={'backgroundColor': '#1E1E1E'},
+                                         className='nnfeatselector'
+                                        ),
+                                 ],
+                        ) 
+    
+
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=True, host = '0.0.0.0')
